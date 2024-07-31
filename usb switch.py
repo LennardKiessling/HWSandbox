@@ -1,15 +1,26 @@
 import serial
-import time
+from pathlib import Path
 import serial.tools.list_ports
 import os
 import shutil
 import subprocess
 import paramiko
+import re
+from dotenv import load_dotenv
+
+dotenv_path = Path('.venv/.env')
+
 
 raspberry_pi_host = "192.168.1.108"
 raspberry_pi_port = 22
 raspberry_pi_username = "lennard"
 private_key_path = '/home/lennard/pi-ba'
+hid_device_host = "192.168.1.245"
+load_dotenv(dotenv_path=dotenv_path)
+hid_device_password = os.getenv('hidDevicePassword')
+
+
+
 # Erstellen eines SSH-Clients
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -52,19 +63,25 @@ def create_memory_dump(dump_name):
         print(f"Error creating memory dump {dump_name}: {e}")
 
 
-def analyze_memory_dump(dump_name):
-    try:
-        # Beispiel-Analyse mit Volatility für Windows 10 64-Bit
-        subprocess.run(['python3', '/home/lennard/Volatility/volatility3/vol.py', '-f', '--output=json', dump_name, 'windows.pslist'],
-                       check=True)
-        print(f"Memory dump {dump_name} analyzed with Volatility (pslist).")
+def analyze_memory_dump(dump_name, output_dir):
+    plugins = [
+        'windows.pslist'
+    ]
 
-        # Weitere Analysen können hier hinzugefügt werden
-        # subprocess.run(['volatility', '-f', dump_name, '--profile', profile, 'malfind'], check=True)
-        # print(f"Memory dump {dump_name} analyzed with Volatility (malfind).")
+    base_output_name = os.path.basename(dump_name).replace('.bin', '')
 
-    except subprocess.CalledProcessError as e:
-        print(f"Error analyzing memory dump {dump_name}: {e}")
+    for plugin in plugins:
+        output_file = os.path.join(output_dir, f"{base_output_name}_{plugin}.json")
+        try:
+            with open(output_file, 'w') as f:
+                subprocess.run(
+                    ['python3', '/home/lennard/Volatility/volatility3/vol.py', '-r', 'json', '-f', dump_name, plugin],
+                    check=True,
+                    stdout=f
+                )
+            print(f"Memory dump {dump_name} analyzed with Volatility ({plugin}). Output saved to {output_file}.")
+        except subprocess.CalledProcessError as e:
+            print(f"Error analyzing memory dump {dump_name} with {plugin}: {e}")
 
 
 def run_pcileech():
@@ -186,6 +203,12 @@ def switch_usb(location):
 def check_disk_connected():
     return os.path.exists('/media/lennard/37728ca4-0882-43f0-90ef-cf3374115e25/home/lk-switch-linux/Dokumente/malware')
 
+def sanitize_filename(filename):
+    sanitized_filename = re.sub(r'[^a-zA-Z0-9._-]', '', filename)
+    return sanitized_filename
+
+
+
 
 while True:
 
@@ -195,6 +218,7 @@ while True:
     files = [f for f in files if os.path.isfile(os.path.join(directory, f))]
 
     if files:
+
 
         # Anfang Durchlauf
         if not check_disk_connected():
@@ -207,7 +231,8 @@ while True:
         print(f"Es gibt Dateien in {directory}.")
 
         source = f"{directory}/{files[0]}"
-        malware_name = files[0]
+
+        malware_name = sanitize_filename(files[0])
 
         destination = "/media/lennard/37728ca4-0882-43f0-90ef-cf3374115e25/home/lk-switch-linux/PycharmProjects/RestoreBackup/malware/"
 
@@ -227,7 +252,7 @@ while True:
             print(f"Ein unerwarteter Fehler ist aufgetreten: {e}")
             break
 
-
+        
 
         # Switch auf Sandbox
         switch_location = switch_usb(switch_location)
@@ -262,13 +287,15 @@ while True:
             if i < dump_count - 1:  # Warte nicht nach dem letzten Dump
                 time.sleep(dump_interval)
 
+
         for i in range(dump_count):
-            dump_name = f"/media/lennard/Analyse Dateien/raw/{malware_name}_{i * dump_interval}.json"
-            analyze_memory_dump(dump_name)
+            output_dir = "/media/lennard/Analyse Dateien/analysiert/"
+            dump_name = f"/media/lennard/Analyse Dateien/raw/{malware_name}_{i * dump_interval}.bin"
+            analyze_memory_dump(dump_name, output_dir)
 
 
         #raspberry hiddevice runterfahren
-        run_script_on_hiddevice(raspberry_pi_host, raspberry_pi_port, raspberry_pi_username, )
+        run_script_on_hiddevice(hid_device_host, raspberry_pi_port, raspberry_pi_username, hid_device_password)
 
         run_script_on_raspberry_pi(raspberry_pi_host, raspberry_pi_port, raspberry_pi_username, private_key_path,
                                    shutoff_pc_script)
