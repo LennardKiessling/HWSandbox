@@ -7,28 +7,42 @@ import subprocess
 import paramiko
 import re
 from dotenv import load_dotenv
+import requests
+import time
 
 dotenv_path = Path('.venv/.env')
 
+# Controlladresses Delock USB ON/OFF
+ip_address_usb_switch_Sandbox_TOGGLE = "http://192.168.1.128/cm?cmnd=Power%20TOGGLE"
+ip_address_usb_switch_Sandbox_ON = "http://192.168.1.128/cm?cmnd=Power%20ON"
+ip_address_usb_switch_Sandbox_OFF = "http://192.168.1.128/cm?cmnd=Power%20off"
 
+
+# Raspberry PC Power Control
 raspberry_pi_host = "192.168.1.108"
 raspberry_pi_port = 22
 raspberry_pi_username = "lennard"
 private_key_path = '/home/lennard/pi-ba'
+
+
+# Raspberry HID Device (Maus Tastatur)
 hid_device_host = "192.168.1.245"
 load_dotenv(dotenv_path=dotenv_path)
 hid_device_password = os.getenv('hidDevicePassword')
-
 
 
 # Erstellen eines SSH-Clients
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-# Laden des Private Keys
+
+# Scripte Controll PC
 start_pc_script = "/home/lennard/PycharmProjects/raspberrypi/startpc.py"
 pc_running_info = "/home/lennard/PycharmProjects/raspberrypi/checkrunningpc.py"
 shutoff_pc_script = "/home/lennard/PycharmProjects/raspberrypi/shutoffpc.py"
+
+# Script HID Device
+
 
 dump_interval = 30  # In Sekunden
 total_duration = 600  # In Sekunden
@@ -42,6 +56,31 @@ default_switch = "analyse"
 switch_location = default_switch
 
 process_info = "ready"
+
+def USB_Sandbox_ON():
+    try:
+        response = requests.get(ip_address_usb_switch_Sandbox_ON)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f"An error occurred with USB switch: {e}")
+
+
+def USB_Sandbox_OFF():
+    try:
+        response = requests.get(ip_address_usb_switch_Sandbox_OFF)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f"An error occurred with USB switch: {e}")
+
+
+def USB_Sandbox_Toggle():
+    try:
+        response = requests.get(ip_address_usb_switch_Sandbox_TOGGLE)
+        response.raise_for_status()
+        if response.status_code == 200:
+            return response.text
+    except requests.exceptions.RequestException as e:
+        print(f"An error occurred with USB switch: {e}")
 
 def unmount_device(device):
     try:
@@ -279,6 +318,12 @@ while True:
                                    start_pc_script)
         time.sleep(10)
 
+        #raspberry hiddevice hochfahren
+        USB_Sandbox_ON()
+        time.sleep(5)
+        run_script_on_hiddevice(hid_device_host, raspberry_pi_port, raspberry_pi_username, hid_device_password, "sudo python3 hidinput.py")
+
+
         # memory dump mit pcileech
 
         for i in range(dump_count):
@@ -295,8 +340,10 @@ while True:
 
 
         #raspberry hiddevice runterfahren
-        run_script_on_hiddevice(hid_device_host, raspberry_pi_port, raspberry_pi_username, hid_device_password)
+        run_script_on_hiddevice(hid_device_host, raspberry_pi_port, raspberry_pi_username, hid_device_password, "sudo shutdown now")
 
+        time.sleep(10)
+        USB_Sandbox_OFF()
         run_script_on_raspberry_pi(raspberry_pi_host, raspberry_pi_port, raspberry_pi_username, private_key_path,
                                    shutoff_pc_script)
 
