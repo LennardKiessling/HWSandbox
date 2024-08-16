@@ -9,8 +9,11 @@ import re
 from dotenv import load_dotenv
 import requests
 import time
+import pickle
 
-dotenv_path = Path('.venv/.env')
+
+
+dotenv_path = Path('/home/lennard/PycharmProjects/Switch USB/.venv/.env')
 
 # Controlladresses Delock USB ON/OFF
 ip_address_usb_switch_Sandbox_TOGGLE = "http://192.168.1.128/cm?cmnd=Power%20TOGGLE"
@@ -41,8 +44,6 @@ start_pc_script = "/home/lennard/PycharmProjects/raspberrypi/startpc.py"
 pc_running_info = "/home/lennard/PycharmProjects/raspberrypi/checkrunningpc.py"
 shutoff_pc_script = "/home/lennard/PycharmProjects/raspberrypi/shutoffpc.py"
 
-# Script HID Device
-
 
 dump_interval = 30  # In Sekunden
 total_duration = 600  # In Sekunden
@@ -56,6 +57,59 @@ default_switch = "analyse"
 switch_location = default_switch
 
 process_info = "ready"
+
+
+def txt_to_set(file_path):
+    """
+    Liest eine Textdatei ein und erstellt ein Set mit den MD5-Hashes.
+
+    :param file_path: Pfad zur Textdatei, die die MD5-Hashes enthält
+    :return: Ein Set mit den MD5-Hashes
+    """
+    with open(file_path, "r") as file:
+        md5_set = {line.strip() for line in file}
+    return md5_set
+
+
+def save_set_to_pickle(md5_set, pickle_path):
+    """
+    Speichert ein Set mithilfe von pickle in einer Datei.
+
+    :param md5_set: Das zu speichernde Set
+    :param pickle_path: Pfad zur Pickle-Datei, in der das Set gespeichert wird
+    """
+    with open(pickle_path, 'wb') as file:
+        pickle.dump(md5_set, file)
+    print(f"Set erfolgreich in {pickle_path} gespeichert.")
+
+
+def load_set_from_pickle(pickle_path):
+    """
+    Lädt ein Set aus einer Pickle-Datei.
+
+    :param pickle_path: Pfad zur Pickle-Datei
+    :return: Das geladene Set
+    """
+    with open(pickle_path, 'rb') as file:
+        md5_set = pickle.load(file)
+    return md5_set
+
+
+# Beispielpfade (Diese kannst du an deine Bedürfnisse anpassen)
+txt_file_path = "/home/lennard/PycharmProjects/Switch USB/md5_malware_hashes/full_md5.txt"  # Pfad zur Textdatei
+pickle_file_path = "/home/lennard/PycharmProjects/Switch USB/md5_malware_hashes/hashes.pkl"  # Pfad zur Pickle-Datei
+
+# Erstellen des Sets aus der Textdatei
+#md5_set = txt_to_set(txt_file_path)
+
+# Speichern des Sets mit pickle
+#save_set_to_pickle(md5_set, pickle_file_path)
+
+"""
+Hier könnte noch Integration kommen mit -> 48 Stunden neueste Daten abrufen und hinzufügen zum Set
+"""
+
+hash_set_loaded = load_set_from_pickle(pickle_file_path)
 
 def USB_Sandbox_ON():
     try:
@@ -147,7 +201,7 @@ def run_script_on_hiddevice(host, port, username, password, command):
 
     try:
         # Verbinde mit dem HID-Gerät
-        client.connect(hostname=host, port=port, username=username, password=password)
+        client.connect(hostname=host, port=port, username=username, password=password, pkey=None)
         print("Verbindung hergestellt")
 
         # Führe den Befehl aus
@@ -168,6 +222,7 @@ def run_script_on_hiddevice(host, port, username, password, command):
         # Schließen der SSH-Verbindung
         print("Verbindung geschlossen")
         client.close()
+
 def run_script_on_raspberry_pi(host, port, username, private_key_path, script_path):
     # Erstelle ein SSH-Client-Objekt
     client = paramiko.SSHClient()
@@ -215,7 +270,7 @@ def run_script_on_raspberry_pi(host, port, username, private_key_path, script_pa
 
 def switch_usb(location):
     # Seriellen Port öffnen
-    ser = serial.Serial('/dev/ttyUSB0', 9600, timeout=0.5)
+    ser = serial.Serial('/dev/ttyUSB0', 9600, timeout=0.1)
 
     if ser.is_open:
         print("Öffnen erfolgreich")
@@ -280,7 +335,7 @@ while True:
             print(f"Datei wurde nach {destination} (ext. SSD) verschoben.")
             time.sleep(5)
             os.sync()
-            unmount_device("/dev/sdc")
+            unmount_device("/dev/sde")
         except FileNotFoundError as e:
             print(f"Fehler: Die Datei oder das Verzeichnis wurde nicht gefunden. ({e})")
             break
@@ -320,7 +375,7 @@ while True:
 
         #raspberry hiddevice hochfahren
         USB_Sandbox_ON()
-        time.sleep(5)
+        time.sleep(30)
         run_script_on_hiddevice(hid_device_host, raspberry_pi_port, raspberry_pi_username, hid_device_password, "sudo python3 hidinput.py")
 
 
