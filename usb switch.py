@@ -27,6 +27,12 @@ raspberry_pi_port = 22
 raspberry_pi_username = "lennard"
 private_key_path = '/home/lennard/pi-ba'
 
+# Raspberry Internet Control + Traffic Analyse
+ip_traffic_pi_host = "192.168.1.230"
+ip_traffic_pi_port = 22
+ip_traffic_pi_username = "lennard"
+ip_traffic_private_key_path = '/home/lennard/.ssh/id_rsa'
+
 
 # Raspberry HID Device (Maus Tastatur)
 hid_device_host = "192.168.1.245"
@@ -237,26 +243,44 @@ def run_script_on_raspberry_pi(host, port, username, private_key_path, script_pa
         client.connect(hostname=host, port=port, username=username, pkey=private_key)
         print("Verbindung hergestellt")
 
-        # Wenn das Script spezifisch ist
-        if script_path == pc_running_info:
-            # Führe das Script aus
-            stdin, stdout, stderr = client.exec_command(f'python3 {script_path}', get_pty=True)
-            print("Script wird ausgeführt...")
-            # Lese die Ausgabe Zeile für Zeile
-            while True:
-                # Lese eine Zeile der Standardausgabe
-                line = stdout.readline()
-                if not line:
-                    print("not line")
-                    break
-                print(line, end='')  # Ausgabe der Zeile auf der Konsole
-                # Überprüfe, ob die Zeile "off" enthält
-                if "off" in line:
-                    print("Das Script hat 'off' zurückgegeben. Beende die Schleife.")
-                    break
+        if host == ip_traffic_pi_host:
+            if script_path == "data_get":
+                # SFTP-Sitzung starten
+                sftp = ssh.open_sftp()
+
+                remote_traffic_report_path = "/home/lennard/var/log/network_traffic.pcap"
+                local_traffic_path_path = "/home/lennard/PycharmProjects/Switch USB/traffic_report"
+
+                # Traffic von Pi runterladen
+                sftp.get(remote_traffic_report_path, local_traffic_path_path)
+                print(f"Die Datei wurde erfolgreich heruntergeladen nach {local_traffic_path_path}")
+
+                # SFTP-Sitzung schließen
+                sftp.close()
+            else:
+                client.exec_command(script_path)
+                print("Script wird ausgeführt...")
         else:
-            client.exec_command(f'python3 {script_path}')
-            print("Script wird ausgeführt...")
+            # Wenn das Script spezifisch ist
+            if script_path == pc_running_info:
+                # Führe das Script aus
+                stdin, stdout, stderr = client.exec_command(f'python3 {script_path}', get_pty=True)
+                print("Script wird ausgeführt...")
+                # Lese die Ausgabe Zeile für Zeile
+                while True:
+                    # Lese eine Zeile der Standardausgabe
+                    line = stdout.readline()
+                    if not line:
+                        print("not line")
+                        break
+                    print(line, end='')  # Ausgabe der Zeile auf der Konsole
+                    # Überprüfe, ob die Zeile "off" enthält
+                    if "off" in line:
+                        print("Das Script hat 'off' zurückgegeben. Beende die Schleife.")
+                        break
+            else:
+                client.exec_command(f'python3 {script_path}')
+                print("Script wird ausgeführt...")
 
 
     except Exception as e:
@@ -376,6 +400,14 @@ while True:
         #raspberry hiddevice hochfahren
         USB_Sandbox_ON()
         time.sleep(30)
+
+        # Traffic Aufzeichnung und 500kb Regel starten
+        run_script_on_raspberry_pi(ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username, ip_traffic_private_key_path,
+                                   "sudo systemctl start limit_kb.service")
+        run_script_on_raspberry_pi(ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username, ip_traffic_private_key_path,
+                                   "sudo systemctl start record_traffic.service")
+
+        # Maus & Tastatur werden ausgeführt -> Malware wird gestartet
         run_script_on_hiddevice(hid_device_host, raspberry_pi_port, raspberry_pi_username, hid_device_password, "sudo python3 hidinput.py")
 
 
@@ -396,11 +428,68 @@ while True:
 
         #raspberry hiddevice runterfahren
         run_script_on_hiddevice(hid_device_host, raspberry_pi_port, raspberry_pi_username, hid_device_password, "sudo shutdown now")
+        run_script_on_raspberry_pi(ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username, ip_traffic_private_key_path,
+                                   "sudo systemctl stop limit_kb.service")
+        run_script_on_raspberry_pi(ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username, ip_traffic_private_key_path,
+                                   "sudo systemctl start record_traffic.service")
 
         time.sleep(10)
         USB_Sandbox_OFF()
         run_script_on_raspberry_pi(raspberry_pi_host, raspberry_pi_port, raspberry_pi_username, private_key_path,
                                    shutoff_pc_script)
+
+        # Switch auf Sandbox umschalten
+        time.sleep(5)
+        switch_location = switch_usb(switch_location)
+        print(switch_location)
+        time.sleep(5)
+
+        # Pc mit Ubuntu starten um Datenträgeranalyse zu beginnen
+        run_script_on_raspberry_pi(raspberry_pi_host, raspberry_pi_port, raspberry_pi_username, private_key_path,
+                                   start_pc_script)
+
+        # Check ob Registry fertig ist
+        run_script_on_raspberry_pi(raspberry_pi_host, raspberry_pi_port, raspberry_pi_username, private_key_path,
+                                   pc_running_info)
+
+
+        # Switch auf Analyse umschalten
+        time.sleep(5)
+        switch_location = switch_usb(switch_location)
+        print(switch_location)
+        time.sleep(5)
+
+        differences_registry_json = '/media/lennard/37728ca4-0882-43f0-90ef-cf3374115e25/home/lk-switch-linux/PycharmProjects/RestoreBackup/win10image/differences_registry_file_hashes.json'
+        registry_data_path = '/home/lennard/PycharmProjects/Switch USB/registry_data'
+
+        try:
+            shutil.move(differences_registry_json, registry_data_path)
+            print(f"Datei wurde nach {destination} (ext. SSD) verschoben.")
+            time.sleep(5)
+            os.sync()
+            unmount_device("/dev/sde")
+        except FileNotFoundError as e:
+            print(f"Fehler: Die Datei oder das Verzeichnis wurde nicht gefunden. ({e})")
+            break
+        except PermissionError as e:
+            print(f"Fehler: Berechtigung verweigert. ({e})")
+            break
+        except Exception as e:
+            print(f"Ein unerwarteter Fehler ist aufgetreten: {e}")
+            break
+
+        registry_data_path_old_name = '/home/lennard/PycharmProjects/Switch USB/registry_data/differences_registry_file_hashes.json'
+        registry_data_path_new_name = f'/home/lennard/PycharmProjects/Switch USB/registry_data/{malware_name}_registry_differences.json'
+
+        os.rename(registry_data_path_old_name, registry_data_path_new_name)
+
+        run_script_on_raspberry_pi(ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username, ip_traffic_private_key_path, "data_get")
+
+        traffic_report_path_old_name = '/home/lennard/PycharmProjects/Switch USB/traffic_report/network_traffic.pcap'
+        traffic_report_path_new_name = f'/home/lennard/PycharmProjects/Switch USB/registry_data/{malware_name}_traffic_report.pcap'
+
+        os.rename(traffic_report_path_old_name, traffic_report_path_new_name)
+
 
 
     else:
