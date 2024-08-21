@@ -52,7 +52,7 @@ shutoff_pc_script = "/home/lennard/PycharmProjects/raspberrypi/shutoffpc.py"
 
 
 dump_interval = 30  # In Sekunden
-total_duration = 600  # In Sekunden
+total_duration = 300 #600  # In Sekunden
 dump_count = total_duration // dump_interval + 1
 
 # Malware dir
@@ -154,12 +154,8 @@ def unmount_device(device):
         print(f"Fehler beim Überprüfen/Unmounten des Geräts: {e}")
 
 def create_memory_dump(dump_name):
-    try:
-        subprocess.run(['sudo', '/home/lennard/Schreibtisch/pcileech-4.18/files/pcileech', 'dump', '-out', dump_name],
-                       check=True)
-        print(f"Memory dump {dump_name} created.")
-    except subprocess.CalledProcessError as e:
-        print(f"Error creating memory dump {dump_name}: {e}")
+    subprocess.run(['sudo', '/home/lennard/Schreibtisch/pcileech-4.18/files/pcileech', 'dump', '-out', dump_name],
+                   check=True)
 
 
 def analyze_memory_dump(dump_name, output_dir):
@@ -246,10 +242,10 @@ def run_script_on_raspberry_pi(host, port, username, private_key_path, script_pa
         if host == ip_traffic_pi_host:
             if script_path == "data_get":
                 # SFTP-Sitzung starten
-                sftp = ssh.open_sftp()
+                sftp = client.open_sftp()
 
-                remote_traffic_report_path = "/home/lennard/var/log/network_traffic.pcap"
-                local_traffic_path_path = "/home/lennard/PycharmProjects/Switch USB/traffic_report"
+                remote_traffic_report_path = "/var/log/network_traffic.pcap"
+                local_traffic_path_path = "/home/lennard/PycharmProjects/Switch USB/traffic_report/network_traffic.pcap"
 
                 # Traffic von Pi runterladen
                 sftp.get(remote_traffic_report_path, local_traffic_path_path)
@@ -419,19 +415,12 @@ while True:
             if i < dump_count - 1:  # Warte nicht nach dem letzten Dump
                 time.sleep(dump_interval)
 
-
-        for i in range(dump_count):
-            output_dir = "/media/lennard/Analyse Dateien/analysiert/"
-            dump_name = f"/media/lennard/Analyse Dateien/raw/{malware_name}_{i * dump_interval}.bin"
-            analyze_memory_dump(dump_name, output_dir)
-
-
         #raspberry hiddevice runterfahren
         run_script_on_hiddevice(hid_device_host, raspberry_pi_port, raspberry_pi_username, hid_device_password, "sudo shutdown now")
         run_script_on_raspberry_pi(ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username, ip_traffic_private_key_path,
                                    "sudo systemctl stop limit_kb.service")
         run_script_on_raspberry_pi(ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username, ip_traffic_private_key_path,
-                                   "sudo systemctl start record_traffic.service")
+                                   "sudo systemctl stop record_traffic.service")
 
         time.sleep(10)
         USB_Sandbox_OFF()
@@ -490,6 +479,12 @@ while True:
 
         os.rename(traffic_report_path_old_name, traffic_report_path_new_name)
 
+        # Analyze Mem Dump
+
+        for i in range(dump_count):
+            output_dir = "/media/lennard/Analyse Dateien/analysiert/"
+            dump_name = f"/media/lennard/Analyse Dateien/raw/{malware_name}_{i * dump_interval}.bin"
+            analyze_memory_dump(dump_name, output_dir)
 
 
     else:
