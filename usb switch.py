@@ -10,6 +10,9 @@ from dotenv import load_dotenv
 import requests
 import time
 import pickle
+import pyshark
+import json
+from collections import defaultdict
 
 
 
@@ -51,9 +54,7 @@ pc_running_info = "/home/lennard/PycharmProjects/raspberrypi/checkrunningpc.py"
 shutoff_pc_script = "/home/lennard/PycharmProjects/raspberrypi/shutoffpc.py"
 
 
-dump_interval = 30  # In Sekunden
-total_duration = 300 #600  # In Sekunden
-dump_count = total_duration // dump_interval + 1
+dump_count = 3
 
 # Malware dir
 directory = "/home/lennard/PycharmProjects/Switch USB/malware"
@@ -154,8 +155,12 @@ def unmount_device(device):
         print(f"Fehler beim Überprüfen/Unmounten des Geräts: {e}")
 
 def create_memory_dump(dump_name):
-    subprocess.run(['sudo', '/home/lennard/Schreibtisch/pcileech-4.18/files/pcileech', 'dump', '-out', dump_name],
-                   check=True)
+    try:
+        subprocess.run(['sudo', '/home/lennard/Schreibtisch/pcileech-4.18/files/pcileech', 'dump', '-out', dump_name],
+                       check=True)
+        print(f"Memory dump {dump_name} created.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error creating memory dump {dump_name}: {e}")
 
 
 def analyze_memory_dump(dump_name, output_dir):
@@ -245,7 +250,7 @@ def run_script_on_raspberry_pi(host, port, username, private_key_path, script_pa
                 sftp = client.open_sftp()
 
                 remote_traffic_report_path = "/var/log/network_traffic.pcap"
-                local_traffic_path_path = "/home/lennard/PycharmProjects/Switch USB/traffic_report/network_traffic.pcap"
+                local_traffic_path_path = (f"/media/lennard/Analyse Dateien/{malware_name}/traffic_report/network_traffic.pcap")
 
                 # Traffic von Pi runterladen
                 sftp.get(remote_traffic_report_path, local_traffic_path_path)
@@ -322,6 +327,133 @@ def sanitize_filename(filename):
     return sanitized_filename
 
 
+def analyze_pcap(pcap_file, malware_name):
+    # Definiere die Sandbox-IP, die durch "Sandbox" ersetzt werden soll
+    sandbox_ip = "192.168.2.132"
+
+    # Öffne die PCAP-Datei
+    cap = pyshark.FileCapture(pcap_file)
+
+    # Sets zur Speicherung einzigartiger HTTP-Anfragen
+    http_requests_set = set()
+
+    # Dictionary zur Speicherung der Verbindungen und Traffic (pro Verbindung)
+    connections_dict = defaultdict(lambda: {'upload': 0, 'download': 0, 'domains': set()})
+
+    # Dictionary zur Speicherung der DNS-Anfragen nach Domain
+    dns_requests_dict = defaultdict(set)
+
+    # Listen für die eindeutigen Ausgabe-Daten
+    http_requests = []
+
+    # Durchlaufe jedes Paket in der PCAP-Datei
+    for packet in cap:
+        # HTTP Requests identifizieren
+        if 'HTTP' in packet:
+            source_ip = "Sandbox" if packet.ip.src == sandbox_ip else packet.ip.src
+            destination_ip = "Sandbox" if packet.ip.dst == sandbox_ip else packet.ip.dst
+            packet_length = int(packet.length) if hasattr(packet, 'length') else 0
+
+            # Erfasse HTTP Content-Type und Content-Length
+            content_type = packet.http.content_type if hasattr(packet.http, 'content_type') else None
+            content_length = int(packet.http.content_length) if hasattr(packet.http, 'content_length') else None
+            http_method = packet.http.request_method if hasattr(packet.http, 'request_method') else None
+            http_host = packet.http.host if hasattr(packet.http, 'host') else None
+            http_uri = packet.http.request_uri if hasattr(packet.http, 'request_uri') else None
+
+            # Erkennen, ob es sich um Upload oder Download handelt
+            direction = "Upload" if source_ip == "Sandbox" else "Download"
+
+            # HTTP-Info als Tupel zur Duplikaterkennung
+            http_info_no_timestamp = (source_ip, destination_ip, http_method, http_host, http_uri)
+
+            # Wenn nicht schon vorhanden, hinzufügen
+            if http_info_no_timestamp not in http_requests_set:
+                http_requests_set.add(http_info_no_timestamp)
+                http_requests.append({
+                    'timestamp': packet.sniff_time.isoformat(),
+                    'source_ip': source_ip,
+                    'destination_ip': destination_ip,
+                    'http_method': http_method,
+                    'http_host': http_host,
+                    'http_uri': http_uri,
+                    'content_type': content_type,
+                    'content_length': content_length,
+                    'packet_length': packet_length,
+                    'direction': direction
+                })
+
+        # TCP/UDP Verbindungen identifizieren (Traffic pro Verbindung erfassen)
+        if hasattr(packet, 'ip'):
+            source_ip = "Sandbox" if packet.ip.src == sandbox_ip else packet.ip.src
+            destination_ip = "Sandbox" if packet.ip.dst == sandbox_ip else packet.ip.dst
+            packet_length = int(packet.length) if hasattr(packet, 'length') else 0
+
+            # Symmetrische Verbindungen berücksichtigen (A -> B ist das gleiche wie B -> A)
+            connection_key = tuple(sorted([source_ip, destination_ip]))
+
+            # Upload (von source_ip zu destination_ip) und Download (von destination_ip zu source_ip) erfassen
+            if connection_key[0] == source_ip:
+                connections_dict[connection_key]['upload'] += packet_length
+            else:
+                connections_dict[connection_key]['download'] += packet_length
+
+        # DNS Requests identifizieren und nach Domain zusammenfassen
+        if 'DNS' in packet and hasattr(packet.dns, 'qry_name'):
+            query_name = packet.dns.qry_name
+            response_ip = packet.dns.a if hasattr(packet.dns, 'a') else None
+
+            # Füge die Antwort-IP zur Liste der IPs für diese Domain hinzu, wenn sie vorhanden ist
+            if response_ip:
+                dns_requests_dict[query_name].add(response_ip)
+
+                # Verknüpfe die Domain mit der entsprechenden Verbindung
+                for connection_key in connections_dict:
+                    if response_ip in connection_key:
+                        connections_dict[connection_key]['domains'].add(query_name)
+
+    cap.close()
+
+    # Konvertiere die Sets in Listen und bereite die Verbindungen für die JSON-Datei auf
+    connections = []
+    for connection_key, data in connections_dict.items():
+        connections.append({
+            'source_ip': connection_key[0],
+            'destination_ip': connection_key[1],
+            'upload': data['upload'],  # Traffic von source_ip zu destination_ip
+            'download': data['download'],  # Traffic von destination_ip zu source_ip
+            'domains': list(data['domains'])  # Zugehörige Domains
+        })
+
+    dns_requests = [{'domain': domain, 'response_ips': list(ips)} for domain, ips in dns_requests_dict.items()]
+
+    # Verzeichnisse erstellen, falls sie nicht existieren
+    output_dir = f'/media/lennard/Analyse Dateien/{malware_name}/traffic_report'
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Speichere die Daten in separaten JSON-Dateien
+    with open(f'{output_dir}/http_requests.json', 'w') as http_file:
+        json.dump(http_requests, http_file, indent=4)
+
+    with open(f'{output_dir}/connections.json', 'w') as conn_file:
+        json.dump(connections, conn_file, indent=4)
+
+    with open(f'{output_dir}/dns_requests_summary.json', 'w') as dns_file:
+        json.dump(dns_requests, dns_file, indent=4)
+
+    print('Analyse abgeschlossen und Dateien gespeichert.')
+
+
+def create_malware_dir(malware_name):
+    # Hauptverzeichnis erstellen
+    main_dir = f"/media/lennard/Analyse Dateien/{malware_name}"
+    os.mkdir(main_dir, mode=0o777)
+
+    # Unterverzeichnisse erstellen
+    subdirs = ['raw', 'analysed', 'data_integrity_report', 'traffic_report']
+    for subdir in subdirs:
+        os.mkdir(os.path.join(main_dir, subdir), mode=0o777)
+
 
 
 while True:
@@ -347,6 +479,7 @@ while True:
         source = f"{directory}/{files[0]}"
 
         malware_name = sanitize_filename(files[0])
+        create_malware_dir(malware_name)
 
         destination = "/media/lennard/37728ca4-0882-43f0-90ef-cf3374115e25/home/lk-switch-linux/PycharmProjects/RestoreBackup/malware/"
 
@@ -355,7 +488,7 @@ while True:
             print(f"Datei wurde nach {destination} (ext. SSD) verschoben.")
             time.sleep(5)
             os.sync()
-            unmount_device("/dev/sde")
+            unmount_device("/dev/sdc")
         except FileNotFoundError as e:
             print(f"Fehler: Die Datei oder das Verzeichnis wurde nicht gefunden. ({e})")
             break
@@ -386,7 +519,11 @@ while True:
         switch_location = switch_usb(switch_location)
         print(switch_location)
         time.sleep(5)
-        
+
+        run_script_on_raspberry_pi(ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username, ip_traffic_private_key_path,
+                                   "sudo systemctl start limit_kb.service")
+        run_script_on_raspberry_pi(ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username, ip_traffic_private_key_path,
+                                   "sudo systemctl stop limit_kb.service")
 
         # Sandbox wird auf Windows gestartet
         run_script_on_raspberry_pi(raspberry_pi_host, raspberry_pi_port, raspberry_pi_username, private_key_path,
@@ -398,8 +535,8 @@ while True:
         time.sleep(30)
 
         # Traffic Aufzeichnung und 500kb Regel starten
-        run_script_on_raspberry_pi(ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username, ip_traffic_private_key_path,
-                                   "sudo systemctl start limit_kb.service")
+        #run_script_on_raspberry_pi(ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username, ip_traffic_private_key_path,
+        #                           "sudo systemctl start limit_kb.service")
         run_script_on_raspberry_pi(ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username, ip_traffic_private_key_path,
                                    "sudo systemctl start record_traffic.service")
 
@@ -410,17 +547,15 @@ while True:
         # memory dump mit pcileech
 
         for i in range(dump_count):
-            dump_name = f"/media/lennard/Analyse Dateien/raw/{malware_name}_{i * dump_interval}.bin"
+            dump_name = f"/media/lennard/Analyse Dateien/{malware_name}/raw/raw_{i}.bin"
             create_memory_dump(dump_name)
-            if i < dump_count - 1:  # Warte nicht nach dem letzten Dump
-                time.sleep(dump_interval)
 
         #raspberry hiddevice runterfahren
-        run_script_on_hiddevice(hid_device_host, raspberry_pi_port, raspberry_pi_username, hid_device_password, "sudo shutdown now")
         run_script_on_raspberry_pi(ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username, ip_traffic_private_key_path,
                                    "sudo systemctl stop limit_kb.service")
         run_script_on_raspberry_pi(ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username, ip_traffic_private_key_path,
                                    "sudo systemctl stop record_traffic.service")
+        run_script_on_hiddevice(hid_device_host, raspberry_pi_port, raspberry_pi_username, hid_device_password, "sudo shutdown now")
 
         time.sleep(10)
         USB_Sandbox_OFF()
@@ -449,14 +584,16 @@ while True:
         time.sleep(5)
 
         differences_registry_json = '/media/lennard/37728ca4-0882-43f0-90ef-cf3374115e25/home/lk-switch-linux/PycharmProjects/RestoreBackup/win10image/differences_registry_file_hashes.json'
-        registry_data_path = '/home/lennard/PycharmProjects/Switch USB/registry_data'
+        differences_userdata_json = '/media/lennard/37728ca4-0882-43f0-90ef-cf3374115e25/home/lk-switch-linux/PycharmProjects/RestoreBackup/win10image/differences_userdata_file_hashes.json'
+
+        data_integrity_path = f'/media/lennard/Analyse Dateien/{malware_name}/data_integrity_report'
 
         try:
-            shutil.move(differences_registry_json, registry_data_path)
+            shutil.move(differences_registry_json, data_integrity_path)
             print(f"Datei wurde nach {destination} (ext. SSD) verschoben.")
             time.sleep(5)
             os.sync()
-            unmount_device("/dev/sde")
+            unmount_device("/dev/sdc")
         except FileNotFoundError as e:
             print(f"Fehler: Die Datei oder das Verzeichnis wurde nicht gefunden. ({e})")
             break
@@ -467,23 +604,34 @@ while True:
             print(f"Ein unerwarteter Fehler ist aufgetreten: {e}")
             break
 
-        registry_data_path_old_name = '/home/lennard/PycharmProjects/Switch USB/registry_data/differences_registry_file_hashes.json'
-        registry_data_path_new_name = f'/home/lennard/PycharmProjects/Switch USB/registry_data/{malware_name}_registry_differences.json'
+        try:
+            shutil.move(differences_userdata_json, data_integrity_path)
+            print(f"Datei wurde nach {destination} (ext. SSD) verschoben.")
+            time.sleep(5)
+            os.sync()
+            unmount_device("/dev/sdc")
+        except FileNotFoundError as e:
+            print(f"Fehler: Die Datei oder das Verzeichnis wurde nicht gefunden. ({e})")
+            break
+        except PermissionError as e:
+            print(f"Fehler: Berechtigung verweigert. ({e})")
+            break
+        except Exception as e:
+            print(f"Ein unerwarteter Fehler ist aufgetreten: {e}")
+            break
 
-        os.rename(registry_data_path_old_name, registry_data_path_new_name)
-
+        # Get the PCAP File
         run_script_on_raspberry_pi(ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username, ip_traffic_private_key_path, "data_get")
 
-        traffic_report_path_old_name = '/home/lennard/PycharmProjects/Switch USB/traffic_report/network_traffic.pcap'
-        traffic_report_path_new_name = f'/home/lennard/PycharmProjects/Switch USB/registry_data/{malware_name}_traffic_report.pcap'
+        # Beispielaufruf der Funktion
+        pcap_file = f"/media/lennard/Analyse Dateien/{malware_name}/traffic_report/network_traffic.pcap"
 
-        os.rename(traffic_report_path_old_name, traffic_report_path_new_name)
+        analyze_pcap(pcap_file, malware_name=malware_name)
 
         # Analyze Mem Dump
-
         for i in range(dump_count):
-            output_dir = "/media/lennard/Analyse Dateien/analysiert/"
-            dump_name = f"/media/lennard/Analyse Dateien/raw/{malware_name}_{i * dump_interval}.bin"
+            output_dir = f"/media/lennard/Analyse Dateien/{malware_name}/analysed/"
+            dump_name = f"/media/lennard/Analyse Dateien/{malware_name}/raw/raw_{i}.bin"
             analyze_memory_dump(dump_name, output_dir)
 
 
