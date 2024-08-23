@@ -1,0 +1,68 @@
+{
+  "dotenv_path": "/home/lennard/PycharmProjects/Switch USB/.venv/.env",
+
+  "usb_switch": {
+    "ip_address_usb_switch_Sandbox": "192.168.1.128"
+  },
+
+  "raspberry_pi_power_control": {
+    "raspberry_pi_host": "192.168.1.108",
+    "raspberry_pi_port": 22,
+    "raspberry_pi_username": "lennard",
+    "private_key_path": "/home/lennard/pi-ba"
+  },
+
+  "raspberry_internet_control": {
+    "ip_traffic_pi_host": "192.168.1.230",
+    "ip_traffic_pi_port": 22,
+    "ip_traffic_pi_username": "lennard",
+    "ip_traffic_private_key_path": "/home/lennard/.ssh/id_rsa"
+  },
+
+  "raspberry_hid_device": {
+    "hid_device_host": "192.168.1.245",
+    "hid_device_password": null
+  },
+
+  "ssh_config": {
+    "missing_host_key_policy": "AutoAddPolicy"
+  },
+
+  "scripts": {
+    "start_pc_script": "/home/lennard/PycharmProjects/raspberrypi/startpc.py",
+    "pc_running_info": "/home/lennard/PycharmProjects/raspberrypi/checkrunningpc.py",
+    "shutoff_pc_script": "/home/lennard/PycharmProjects/raspberrypi/shutoffpc.py"
+  },
+
+  "malware_dir": "/home/lennard/PycharmProjects/Switch USB/malware",
+
+  "default_switch": "analyse",
+
+  "switch_location": "analyse",
+
+  "process_info": "ready",
+
+  "dump_count": 3,
+
+  "analyse_base_path": "/media/lennard/Analyse Dateien/",
+
+  "baseline_folder": "beispiel",
+
+  "analyse_paths": {
+    "traffic_path": "/traffic_report/",
+    "data_integrity_path": "/data_integrity_report/",
+    "votality_dump": "/analysed/",
+    "traffic": {
+      "connections": "connections.json",
+      "dns-requests": "dns_requests_summary.json",
+      "http-requests": "http_requests.json"
+    },
+    "data_integrity": {
+      "registry": "differences_registry_file_hashes.json",
+      "user_data": "differences_userdata_file_hashes.json"
+    }
+  },
+      "plugins": [
+        "windows.pslist"
+    ]
+}
