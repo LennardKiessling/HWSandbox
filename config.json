@@ -44,9 +44,9 @@
 
   "dump_count": 3,
 
-  "analyse_base_path": "/media/lennard/Analyse Dateien/",
+  "analyse_base_path": "/media/lennard/AnalyseDateien/",
 
-  "baseline_folder": "beispiel",
+  "baseline_folder": "baseline_0",
 
   "analyse_paths": {
     "traffic_path": "/traffic_report/",
@@ -63,6 +63,6 @@
     }
   },
       "plugins": [
-        "windows.pslist"
+        "windows.pslist","windows.pstree","windows.malfind.Malfind", "windows.netscan"
     ]
 }

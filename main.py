@@ -1,3 +1,5 @@
+import time
+
 from dynamic_analyse import *
 from ssh_conn import *
 from usb_data_switch import *
@@ -139,6 +141,7 @@ def main():
             run_script_on_raspberry_pi(ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username,
                                        ip_traffic_private_key_path,
                                        "sudo systemctl start limit_kb.service")
+            time.sleep(1)
             run_script_on_raspberry_pi(ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username,
                                        ip_traffic_private_key_path,
                                        "sudo systemctl stop limit_kb.service")
@@ -150,7 +153,7 @@ def main():
 
             # raspberry hiddevice hochfahren
             USB_Sandbox_ON(ip_address_usb_switch_Sandbox)
-            time.sleep(30)
+            time.sleep(40)
 
             # Traffic Aufzeichnung und 500kb Regel starten
             # run_script_on_raspberry_pi(ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username, ip_traffic_private_key_path,
@@ -161,12 +164,13 @@ def main():
 
             # Maus & Tastatur werden ausgeführt -> Malware wird gestartet
             run_script_on_hiddevice(hid_device_host, raspberry_pi_port, raspberry_pi_username, hid_device_password,
-                                    "sudo python3 hidinput.py")
-
+                                    "sudo python3 hidinput_run_malware.py")
+            run_script_on_hiddevice(hid_device_host, raspberry_pi_port, raspberry_pi_username, hid_device_password,
+                                    "sudo systemctl start hidinput_running.service")
             # memory dump mit pcileech
 
             for i in range(dump_count):
-                dump_name = f"/media/lennard/Analyse Dateien/{malware_name}/raw/raw_{i}.bin"
+                dump_name = f"/media/lennard/AnalyseDateien/{malware_name}/raw/raw_{i}.bin"
                 create_memory_dump(dump_name)
 
             # raspberry hiddevice runterfahren
@@ -207,7 +211,7 @@ def main():
             differences_registry_json = '/media/lennard/37728ca4-0882-43f0-90ef-cf3374115e25/home/lk-switch-linux/PycharmProjects/RestoreBackup/win10image/differences_registry_file_hashes.json'
             differences_userdata_json = '/media/lennard/37728ca4-0882-43f0-90ef-cf3374115e25/home/lk-switch-linux/PycharmProjects/RestoreBackup/win10image/differences_userdata_file_hashes.json'
 
-            data_integrity_path = f'/media/lennard/Analyse Dateien/{malware_name}/data_integrity_report'
+            data_integrity_path = f'/media/lennard/AnalyseDateien/{malware_name}/data_integrity_report'
 
 
             move_file(differences_registry_json, data_integrity_path)
@@ -219,47 +223,63 @@ def main():
                                        ip_traffic_private_key_path, "data_get", malware_name=malware_name)
 
             # Beispielaufruf der Funktion
-            pcap_file = f"/media/lennard/Analyse Dateien/{malware_name}/traffic_report/network_traffic.pcap"
+            pcap_file = f"/media/lennard/AnalyseDateien/{malware_name}/traffic_report/network_traffic.pcap"
 
-            analyze_pcap(pcap_file, malware_name=malware_name)
+            #analyze_pcap(pcap_file, malware_name=malware_name)
 
             # Analyze Mem Dump
             for i in range(dump_count):
-                output_dir = f"/media/lennard/Analyse Dateien/{malware_name}/analysed/"
-                dump_name = f"/media/lennard/Analyse Dateien/{malware_name}/raw/raw_{i}.bin"
+                output_dir = f"/media/lennard/AnalyseDateien/{malware_name}/analysed/"
+                dump_name = f"/media/lennard/AnalyseDateien/{malware_name}/raw/raw_{i}.bin"
                 analyze_memory_dump(dump_name, output_dir, times=i, plugins=plugins)
 
 
-            # Baseline comparison
-
-            baseline_comparison( f"{analyse_base_path}{baseline_dir}{traffic_path}{traffic_connections_file}",
-                                f"{analyse_base_path}{malware_name}{traffic_path}{traffic_connections_file}",
-                                f'{analyse_base_path}{malware_name}{traffic_path}nullified_connections.json')
-
-            baseline_comparison( f"{analyse_base_path}{baseline_dir}{traffic_path}{traffic_http_requests_file}",
-                                f"{analyse_base_path}{malware_name}{traffic_path}{traffic_http_requests_file}",
-                                f'{analyse_base_path}{malware_name}{traffic_path}nullified_http_requests.json')
-
-            baseline_comparison( f"{analyse_base_path}{baseline_dir}{traffic_path}{traffic_dns_requests_file}",
-                                f"{analyse_base_path}{malware_name}{traffic_path}{traffic_dns_requests_file}",
-                                f'{analyse_base_path}{malware_name}{traffic_path}nullified_dns_requests.json')
-
-            baseline_comparison(f"{analyse_base_path}{baseline_dir}{data_integrity_baseline_path}{data_integrity_registry_file}",
-                                f"{analyse_base_path}{malware_name}{data_integrity_baseline_path}{data_integrity_registry_file}",
-                                f'{analyse_base_path}{malware_name}{data_integrity_baseline_path}nullified_differences_registry_file_hashes.json')
-
-            baseline_comparison(f"{analyse_base_path}{baseline_dir}{data_integrity_baseline_path}{data_integrity_user_data_file}",
-                                f"{analyse_base_path}{malware_name}{data_integrity_baseline_path}{data_integrity_user_data_file}",
-                                f'{analyse_base_path}{malware_name}{data_integrity_baseline_path}nullified_differences_userdata_file_hashes.json')
-
+            # Put the dumps together and keep the same ones in each file
             for plugin in plugins:
+                compare_json_files = []
                 for i in range(dump_count):
-                    baseline_comparison(
-                        f"{analyse_base_path}{baseline_dir}{votality_path}/{plugin}_{i}.json",
-                        f"{analyse_base_path}{malware_name}{votality_path}/{plugin}_{i}.json",
-                        f'{analyse_base_path}{malware_name}{votality_path}/nullified_{plugin}_{i}.json')
+                    compare_json_files.append(f"{analyse_base_path}{malware_name}{votality_path}{plugin}_{i}.json")
+
+                if plugin == "windows.pslist":
+                    merge_unique_pslist_files(compare_json_files,f"{analyse_base_path}{malware_name}{votality_path}{plugin}_compared.json")
+
+                elif plugin == "windows.pstree":
+                    merge_unique_pstree_files(compare_json_files,f"{analyse_base_path}{malware_name}{votality_path}{plugin}_compared.json")
+
+                elif plugin == "windows.malfind.Malfind":
+                    merge_unique_malfind_files(compare_json_files,f"{analyse_base_path}{malware_name}{votality_path}{plugin}_compared.json")
+
+                elif plugin == "windows.netscan":
+                    merge_unique_netscan_files(compare_json_files,f"{analyse_base_path}{malware_name}{votality_path}{plugin}_compared.json")
+
+            # Baseline comparison
+            for plugin in plugins:
+                if plugin == "windows.pslist":
+                    filter_unique_pslist_entries(f"{analyse_base_path}{baseline_dir}{votality_path}{plugin}_compared.json",
+                                                 f"{analyse_base_path}{malware_name}{votality_path}{plugin}_compared.json",
+                                              f"{analyse_base_path}{malware_name}{votality_path}{plugin}_filtered.json")
+
+                elif plugin == "windows.pstree":
+                    filter_unique_pstree_entries(f"{analyse_base_path}{baseline_dir}{votality_path}{plugin}_compared.json",
+                                                 f"{analyse_base_path}{malware_name}{votality_path}{plugin}_compared.json",
+                                              f"{analyse_base_path}{malware_name}{votality_path}{plugin}_filtered.json")
+
+                elif plugin == "windows.malfind.Malfind":
+                    filter_unique_malfind_entries(f"{analyse_base_path}{baseline_dir}{votality_path}{plugin}_compared.json",
+                                                 f"{analyse_base_path}{malware_name}{votality_path}{plugin}_compared.json",
+                                              f"{analyse_base_path}{malware_name}{votality_path}{plugin}_filtered.json")
+
+                elif plugin == "windows.netscan":
+                    filter_unique_netscan_entries(f"{analyse_base_path}{baseline_dir}{votality_path}{plugin}_compared.json",
+                                                 f"{analyse_base_path}{malware_name}{votality_path}{plugin}_compared.json",
+                                              f"{analyse_base_path}{malware_name}{votality_path}{plugin}_filtered.json")
 
 
+
+            json_files = []
+            for plugin in plugins:
+                json_files.append(f"{analyse_base_path}{malware_name}{votality_path}{plugin}_compared.json")
+            jsons_to_html(json_files, f"{analyse_base_path}{malware_name}{votality_path}analyzed.html")
 
         else:
             print(f"Es gibt keine Dateien in {directory}.")

@@ -51,7 +51,7 @@ def run_script_on_raspberry_pi(host, port, username, private_key_path, script_pa
                 sftp = client.open_sftp()
 
                 remote_traffic_report_path = "/var/log/network_traffic.pcap"
-                local_traffic_path_path = (f"/media/lennard/Analyse Dateien/{malware_name}/traffic_report/network_traffic.pcap")
+                local_traffic_path_path = (f"/media/lennard/AnalyseDateien/{malware_name}/traffic_report/network_traffic.pcap")
 
                 # Traffic von Pi runterladen
                 sftp.get(remote_traffic_report_path, local_traffic_path_path)

@@ -3,7 +3,7 @@ import shutil
 import subprocess
 import re
 import time
-
+import json
 
 def unmount_device(device):
     try:
@@ -29,7 +29,7 @@ def check_disk_connected():
 
 def create_malware_dir(malware_name):
     # Hauptverzeichnis erstellen
-    main_dir = f"/media/lennard/Analyse Dateien/{malware_name}"
+    main_dir = f"/media/lennard/AnalyseDateien/{malware_name}"
     os.mkdir(main_dir, mode=0o777)
 
     # Unterverzeichnisse erstellen
@@ -51,3 +51,148 @@ def move_file(source,destination):
         print(f"Fehler: Berechtigung verweigert. ({e})")
     except Exception as e:
         print(f"Ein unerwarteter Fehler ist aufgetreten: {e}")
+
+
+def render_entry_as_html(entry, indent=0):
+    html = ""
+    indent_space = '&nbsp;' * indent * 4  # Adding spaces for indentation in HTML
+
+    html += '<tr>'
+    for key, value in entry.items():
+        if key != '__children':
+            html += f'<td>{indent_space}{value}</td>'
+    html += '</tr>'
+
+    if '__children' in entry:
+        for child in entry['__children']:
+            html += render_entry_as_html(child, indent + 1)
+
+    return html
+
+def jsons_to_html(json_files, html_file):
+    with open(html_file, 'w') as f:
+        f.write('<html><body>')
+
+        for json_file in json_files:
+            f.write(f'<h2>Inhalt von {json_file}</h2>')
+            f.write('<table border="1">')
+
+            with open(json_file, 'r') as jf:
+                data = json.load(jf)
+
+                # Table header
+                f.write('<tr>')
+                for key in data[0].keys():
+                    if key != '__children':
+                        f.write(f'<th>{key}</th>')
+                f.write('</tr>')
+
+                # Table rows
+                for entry in data:
+                    f.write(render_entry_as_html(entry))
+
+            f.write('</table><br>')
+
+        f.write('</body></html>')
+
+
+def merge_unique_netscan_files(file_list, output_file):
+    unique_data = {}
+
+    for file_name in file_list:
+        with open(file_name, 'r') as file:
+            data = json.load(file)
+            for entry in data:
+                # Create a unique key for each entry
+                unique_key = (
+                    entry.get('PID'),
+                    entry.get('LocalAddr'),
+                    entry.get('LocalPort'),
+                    entry.get('Proto'),
+                    entry.get('State')
+                )
+                if unique_key not in unique_data:
+                    unique_data[unique_key] = entry
+
+    # Convert the dictionary values back to a list
+    merged_data = list(unique_data.values())
+
+    with open(output_file, 'w') as output_file:
+        json.dump(merged_data, output_file, indent=4)
+
+
+def merge_unique_pstree_files(file_list, output_file):
+    unique_data = {}
+    all_children_pids = set()
+
+    def add_unique_entry(entry):
+        unique_key = (
+            entry.get('PID'),
+            entry.get('PPID'),
+            entry.get('ImageFileName'),
+            entry.get('CreateTime')
+        )
+        if unique_key not in unique_data:
+            unique_data[unique_key] = entry
+            for child in entry.get('__children', []):
+                all_children_pids.add(child.get('PID'))
+                add_unique_entry(child)
+
+    for file_name in file_list:
+        with open(file_name, 'r') as file:
+            data = json.load(file)
+            for entry in data:
+                add_unique_entry(entry)
+
+    # Remove entries that are child processes in another process
+    merged_data = [entry for entry in unique_data.values() if entry.get('PID') not in all_children_pids]
+
+    with open(output_file, 'w') as output_file:
+        json.dump(merged_data, output_file, indent=4)
+
+
+def merge_unique_pslist_files(file_list, output_file):
+    unique_data = {}
+
+    for file_name in file_list:
+        with open(file_name, 'r') as file:
+            data = json.load(file)
+            for entry in data:
+                # Create a unique key for each entry
+                unique_key = (
+                    entry.get('PID'),
+                    entry.get('ImageFileName'),
+                    entry.get('CreateTime')
+                )
+                if unique_key not in unique_data:
+                    unique_data[unique_key] = entry
+
+    # Convert the dictionary values back to a list
+    merged_data = list(unique_data.values())
+
+    with open(output_file, 'w') as output_file:
+        json.dump(merged_data, output_file, indent=4)
+
+
+def merge_unique_malfind_files(file_list, output_file):
+    unique_data = {}
+
+    for file_name in file_list:
+        with open(file_name, 'r') as file:
+            data = json.load(file)
+            for entry in data:
+                # Create a unique key for each entry
+                unique_key = (
+                    entry.get('PID'),
+                    entry.get('Start VPN'),
+                    entry.get('End VPN'),
+                    entry.get('ProcessName')
+                )
+                if unique_key not in unique_data:
+                    unique_data[unique_key] = entry
+
+    # Convert the dictionary values back to a list
+    merged_data = list(unique_data.values())
+
+    with open(output_file, 'w') as output_file:
+        json.dump(merged_data, output_file, indent=4)

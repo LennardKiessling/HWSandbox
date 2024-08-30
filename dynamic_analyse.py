@@ -146,7 +146,7 @@ def analyze_pcap(pcap_file, malware_name):
     dns_requests = [{'domain': domain, 'response_ips': list(ips)} for domain, ips in dns_requests_dict.items()]
 
     # Verzeichnisse erstellen, falls sie nicht existieren
-    output_dir = f'/media/lennard/Analyse Dateien/{malware_name}/traffic_report'
+    output_dir = f'/media/lennard/AnalyseDateien/{malware_name}/traffic_report'
     os.makedirs(output_dir, exist_ok=True)
 
     # Speichere die Daten in separaten JSON-Dateien
