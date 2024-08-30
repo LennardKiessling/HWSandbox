@@ -274,12 +274,15 @@ def main():
                                                  f"{analyse_base_path}{malware_name}{votality_path}{plugin}_compared.json",
                                               f"{analyse_base_path}{malware_name}{votality_path}{plugin}_filtered.json")
 
-
-
-            json_files = []
+            json_files_unfiltered = []
             for plugin in plugins:
-                json_files.append(f"{analyse_base_path}{malware_name}{votality_path}{plugin}_compared.json")
-            jsons_to_html(json_files, f"{analyse_base_path}{malware_name}{votality_path}analyzed.html")
+                json_files_unfiltered.append(f"{analyse_base_path}{malware_name}{votality_path}{plugin}_compared.json")
+            jsons_to_html(json_files_unfiltered, f"{analyse_base_path}{malware_name}{votality_path}analyzed.html")
+
+            json_files_filtered = []
+            for plugin in plugins:
+                json_files_filtered.append(f"{analyse_base_path}{malware_name}{votality_path}{plugin}_filtered.json")
+            jsons_to_html(json_files_filtered, f"{analyse_base_path}{malware_name}{votality_path}filtered_analyzed.html")
 
         else:
             print(f"Es gibt keine Dateien in {directory}.")
