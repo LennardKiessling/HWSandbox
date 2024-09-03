@@ -80,16 +80,27 @@ def jsons_to_html(json_files, html_file):
             with open(json_file, 'r') as jf:
                 data = json.load(jf)
 
-                # Table header
-                f.write('<tr>')
-                for key in data[0].keys():
-                    if key != '__children':
-                        f.write(f'<th>{key}</th>')
-                f.write('</tr>')
+                if isinstance(data, dict):
+                    # Wenn das JSON ein Dictionary ist, wie in Ihrem Fall
+                    f.write('<tr><th>File Name</th><th>Status</th><th>File 1 Value</th><th>File 2 Value</th></tr>')
 
-                # Table rows
-                for entry in data:
-                    f.write(render_entry_as_html(entry))
+                    for file_name, file_info in data.items():
+                        f.write('<tr>')
+                        f.write(f'<td>{file_name}</td>')
+                        f.write(f'<td>{file_info.get("status", "")}</td>')
+                        f.write(f'<td>{file_info.get("file1_value", "")}</td>')
+                        f.write(f'<td>{file_info.get("file2_value", "")}</td>')
+                        f.write('</tr>')
+                else:
+                    # Wenn das JSON eine Liste von Dictionaries ist
+                    f.write('<tr>')
+                    for key in data[0].keys():
+                        if key != '__children':
+                            f.write(f'<th>{key}</th>')
+                    f.write('</tr>')
+
+                    for entry in data:
+                        f.write(render_entry_as_html(entry))
 
             f.write('</table><br>')
 
@@ -162,12 +173,34 @@ def merge_unique_pslist_files(file_list, output_file):
                 unique_key = (
                     entry.get('PID'),
                     entry.get('ImageFileName'),
-                    entry.get('CreateTime')
+                    entry.get('CreateTime'),
+                    entry.get('Offset(V)')
                 )
                 if unique_key not in unique_data:
                     unique_data[unique_key] = entry
 
     # Convert the dictionary values back to a list
+    merged_data = list(unique_data.values())
+
+    with open(output_file, 'w') as output_file:
+        json.dump(merged_data, output_file, indent=4)
+
+def merge_unique_psscan_files(file_list, output_file):
+    unique_data = {}
+
+    for file_name in file_list:
+        with open(file_name, 'r') as file:
+            data = json.load(file)
+            for entry in data:
+                unique_key = (
+                    entry.get('PID'),
+                    entry.get('ImageFileName'),
+                    entry.get('CreateTime'),
+                    entry.get('Offset(V)')
+                )
+                if unique_key not in unique_data:
+                    unique_data[unique_key] = entry
+
     merged_data = list(unique_data.values())
 
     with open(output_file, 'w') as output_file:

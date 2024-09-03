@@ -63,6 +63,6 @@
     }
   },
       "plugins": [
-        "windows.pslist","windows.pstree","windows.malfind.Malfind", "windows.netscan"
+        "windows.pslist","windows.pstree","windows.psscan","windows.malfind.Malfind", "windows.netscan"
     ]
 }

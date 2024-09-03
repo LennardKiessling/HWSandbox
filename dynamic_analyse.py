@@ -13,20 +13,18 @@ def create_memory_dump(dump_name):
         print(f"Error creating memory dump {dump_name}: {e}")
 
 
-def analyze_memory_dump(dump_name, output_dir, times, plugins):
-
-    for plugin in plugins:
-        output_file = os.path.join(output_dir, f"{plugin}_{times}.json")
-        try:
-            with open(output_file, 'w') as f:
-                subprocess.run(
-                    ['python3', '/home/lennard/Volatility/volatility3/vol.py', '-r', 'json', '-f', dump_name, plugin],
-                    check=True,
-                    stdout=f
-                )
-            print(f"Memory dump {dump_name} analyzed with Volatility ({plugin}). Output saved to {output_file}.")
-        except subprocess.CalledProcessError as e:
-            print(f"Error analyzing memory dump {dump_name} with {plugin}: {e}")
+def analyze_memory_dump(dump_name, output_dir, plugin, times):
+    output_file = os.path.join(output_dir, f"{plugin}_{times}.json")
+    try:
+        with open(output_file, 'w') as f:
+            subprocess.run(
+                ['python3', '/home/lennard/Volatility/volatility3/vol.py', '-r', 'json', '-f', dump_name, plugin],
+                check=True,
+                stdout=f
+            )
+        print(f"Memory dump {dump_name} analyzed with Volatility ({plugin}). Output saved to {output_file}.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error analyzing memory dump {dump_name} with {plugin}: {e}")
 
 
 def run_pcileech():

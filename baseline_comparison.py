@@ -263,3 +263,34 @@ def filter_unique_pslist_entries(baseline_file, new_file, output_file):
     # Write the filtered data to the output file
     with open(output_file, 'w') as output_f:
         json.dump(filtered_data, output_f, indent=4)
+
+def filter_unique_file_entries(baseline_file, new_file, output_file):
+    # Laden der Baseline-Daten
+    with open(baseline_file, 'r') as baseline_f:
+        baseline_data = json.load(baseline_f)
+
+    # Laden der neuen Daten
+    with open(new_file, 'r') as new_f:
+        new_data = json.load(new_f)
+
+    # Funktion zur Erstellung eines eindeutigen Schlüssels für jeden Eintrag
+    def extract_key(file_name, file_info):
+        return (
+            file_name,
+            file_info.get('status')
+        )
+
+    # Erstellen eines Sets von eindeutigen Schlüsseln aus den Baseline-Daten
+    baseline_keys = set(
+        extract_key(file_name, file_info) for file_name, file_info in baseline_data.items()
+    )
+
+    # Filtern der neuen Daten, um Einträge zu finden, die nicht in der Baseline vorhanden sind
+    filtered_data = {
+        file_name: file_info for file_name, file_info in new_data.items()
+        if extract_key(file_name, file_info) not in baseline_keys
+    }
+
+    # Schreiben der gefilterten Daten in die Ausgabedatei
+    with open(output_file, 'w') as output_f:
+        json.dump(filtered_data, output_f, indent=4)
