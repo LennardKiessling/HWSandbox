@@ -1,0 +1,6 @@
+Just a file to save the state in which the boot of the pc is.
+
+Is it analyzing what the malware did or is it restoring the backup.
+
+0 = Needs to be restored and malware needs to be transfered
+1 = Needs to be analyzed
