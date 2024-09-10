@@ -78,10 +78,13 @@ def jsons_to_html(json_files, html_file):
             f.write('<table border="1">')
 
             with open(json_file, 'r') as jf:
-                data = json.load(jf)
+                try:
+                    data = json.load(jf)  # Load JSON data
+                except json.JSONDecodeError:
+                    f.write('<p>Fehler beim Laden der JSON-Datei.</p>')
+                    continue
 
                 if isinstance(data, dict):
-                    # Wenn das JSON ein Dictionary ist, wie in Ihrem Fall
                     f.write('<tr><th>File Name</th><th>Status</th><th>File 1 Value</th><th>File 2 Value</th></tr>')
 
                     for file_name, file_info in data.items():
@@ -91,8 +94,9 @@ def jsons_to_html(json_files, html_file):
                         f.write(f'<td>{file_info.get("file1_value", "")}</td>')
                         f.write(f'<td>{file_info.get("file2_value", "")}</td>')
                         f.write('</tr>')
-                else:
-                    # Wenn das JSON eine Liste von Dictionaries ist
+
+                elif isinstance(data, list) and data:
+                    # If the JSON is a list of dictionaries
                     f.write('<tr>')
                     for key in data[0].keys():
                         if key != '__children':
@@ -101,6 +105,10 @@ def jsons_to_html(json_files, html_file):
 
                     for entry in data:
                         f.write(render_entry_as_html(entry))
+
+                else:
+                    # Handle empty or invalid JSON structure
+                    f.write('<p>Keine Daten vorhanden oder ungültiges Format.</p>')
 
             f.write('</table><br>')
 

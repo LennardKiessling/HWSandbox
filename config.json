@@ -46,7 +46,7 @@
 
   "analyse_base_path": "/media/lennard/AnalyseDateien/",
 
-  "baseline_folder": "baseline_0",
+  "baseline_folder": "baseline_administrator",
 
   "analyse_paths": {
     "traffic_path": "/traffic_report/",

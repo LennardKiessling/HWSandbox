@@ -191,13 +191,6 @@ def main():
             run_script_on_hiddevice(hid_device_host, raspberry_pi_port, raspberry_pi_username, hid_device_password,
                                     "sudo shutdown now")
 
-            thread_pcap = threading.Thread(
-                target=run_script_on_raspberry_pi,
-                args=(
-                ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username, ip_traffic_private_key_path, "data_get",
-                malware_name)
-            )
-            thread_pcap.start()
 
             USB_Sandbox_OFF(ip_address_usb_switch_Sandbox)
             run_script_on_raspberry_pi(raspberry_pi_host, raspberry_pi_port, raspberry_pi_username, private_key_path,
@@ -324,7 +317,7 @@ def main():
             jsons_to_html(json_files_unfiltered, f"{analyse_base_path}{malware_name}/analyzed.html")
             jsons_to_html(json_files_filtered,f"{analyse_base_path}{malware_name}/filtered_analyzed.html")
 
-            thread_pcap.join()
+            run_script_on_raspberry_pi(ip_traffic_pi_host, ip_traffic_pi_port, ip_traffic_pi_username, ip_traffic_private_key_path, "data_get", malware_name=malware_name)
             # Beispielaufruf der Funktion
             pcap_file = f"/media/lennard/AnalyseDateien/{malware_name}/traffic_report/network_traffic.pcap"
 
