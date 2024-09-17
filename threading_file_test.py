@@ -3,7 +3,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 # Verzeichnis, das durchsucht werden soll
-directory = r"C:\Users\Lennard\Desktop"
+directory = r"C:\Windows\System32"
 
 # Funktion, um den Inhalt einer Datei zu lesen
 def read_file(file_path):
@@ -39,13 +39,7 @@ def multi_threaded_read(all_files, num_threads):
 # Hauptprogramm
 if __name__ == "__main__":
     all_files = get_all_files(directory)
-    start_time = time.time()
-
-    file_contents_single = single_threaded_read(all_files)
-
-    end_time = time.time()
-    elapsed_time_single = end_time - start_time
-    print(f"Das Einlesen aller Dateien im Single-Threading dauerte {elapsed_time_single:.6f} Sekunden.\n")
+    print(len(all_files))
 
     start_time = time.time()
     threads_used = 4
@@ -54,6 +48,16 @@ if __name__ == "__main__":
     end_time = time.time()
     elapsed_time_multi = end_time - start_time
     print(f"Das Einlesen aller Dateien im Multi-Threading dauerte {elapsed_time_multi:.6f} Sekunden.\n")
+
+    start_time = time.time()
+
+    file_contents_single = single_threaded_read(all_files)
+
+    end_time = time.time()
+    elapsed_time_single = end_time - start_time
+    print(f"Das Einlesen aller Dateien im Single-Threading dauerte {elapsed_time_single:.6f} Sekunden.\n")
+
+
 
     # Ergebnisse vergleichen
     print(f"Vergleich:\nSingle-Threading: {elapsed_time_single:.6f} Sekunden\nMulti-Threading ({threads_used} Threads): {elapsed_time_multi:.6f} Sekunden")
