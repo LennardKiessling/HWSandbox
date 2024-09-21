@@ -6,7 +6,7 @@ abopreis_values = np.linspace(1, 300, 50)
 
 P, S = np.meshgrid(abopreis_values, sandbox_anzahl_values)
 
-BE = ((12 * S * P) - (262.80 * S)) - (612 * S)
+BE = ((12 * S * P) - (262.80 * S)) - (616 * S)
 
 fig = plt.figure(figsize=(10, 7))
 ax = fig.add_subplot(111, projection='3d')
